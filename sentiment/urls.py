@@ -1,6 +1,6 @@
 from django.urls import path
-from .views import classify_image
+from .views import analyze_image
 
 urlpatterns = [
-     path("classify/", classify_image, name="classify_image"),
+    path('analyze/', analyze_image, name='analyze_image'),
 ]

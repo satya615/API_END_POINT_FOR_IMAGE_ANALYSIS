@@ -1,47 +1,28 @@
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, parser_classes
-from rest_framework.parsers import MultiPartParser
-from transformers import AutoImageProcessor, AutoModelForImageClassification
+from rest_framework.parsers import MultiPartParser, FormParser
+from transformers import pipeline
 from PIL import Image
 import torch
-import os
 
-# Load the model once at startup
-processor = AutoImageProcessor.from_pretrained("Chorzy/Sentiment_Analysis")
-model = AutoModelForImageClassification.from_pretrained("Chorzy/Sentiment_Analysis")
+# Load the model pipeline once (better performance)
+sentiment_pipeline = pipeline("image-classification", model="Chorzy/Sentiment_Analysis")
 
-def predict_sentiment(image):
-    """Predicts sentiment from an uploaded image."""
-    inputs = processor(images=image, return_tensors="pt")
-    
-    with torch.no_grad():
-        outputs = model(**inputs)
-    
-    predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
-    labels = model.config.id2label
-    
-    top_index = predictions.argmax().item()
-    sentiment = labels[top_index]
-    confidence = predictions[0, top_index].item()
-
-    return sentiment, confidence
-
-@api_view(['POST'])
-@parser_classes([MultiPartParser])  # Allows file uploads
-def classify_image(request):
-    """API endpoint to classify an uploaded image."""
+@api_view(["POST"])
+@parser_classes([MultiPartParser, FormParser])
+def analyze_image(request):
+    """Receives an image, processes it, and returns sentiment classification."""
     if 'image' not in request.FILES:
-        return JsonResponse({"error": "No image file provided"}, status=400)
+        return JsonResponse({'error': 'No image provided'}, status=400)
 
-    image_file = request.FILES['image']
+    # Load image
+    image = Image.open(request.FILES['image']).convert("RGB")
 
-    try:
-        # Open image
-        image = Image.open(image_file).convert("RGB")
-        
-        # Predict sentiment
-        sentiment, confidence = predict_sentiment(image)
+    # Run inference
+    results = sentiment_pipeline(image)
+    top_result = results[0]  # Get the highest probability prediction
 
-        return JsonResponse({"sentiment": sentiment, "confidence": confidence})
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+    return JsonResponse({
+        'sentiment': top_result['label'],
+        'confidence': top_result['score']
+    })
